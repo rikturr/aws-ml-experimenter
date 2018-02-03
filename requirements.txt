@@ -1,0 +1,7 @@
+boto3
+keras
+scikit-learn
+pandas
+numpy
+feather-format
+scipy
