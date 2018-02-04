@@ -7,9 +7,16 @@ Prerequisites:
 * AWS account
 * .pem file for SSH-ing onto your EC2 instances
 
-Make sure the .pem file is named exactly the same as the key name on your AWS account. The experiment scripts assume the names are the same. If your key is called "mykey" on your AwS account, then the pem file should be called "mykey.pem".
+Make sure the .pem file is named exactly the same as the key name on your AWS account. The experiment scripts assume the names are the same. If your key is called "mykey" on your AWS account, then the pem file should be called "mykey.pem".
 
 Use the `--bid-price` flag to take advantage of SPOT instances and save money!
+
+## Guided walkthrough
+
+This repo was presented in a talk titled "Machine learning in the cloud with Amazon Web Services" for the Miami Machine Learning Meetup group: https://www.meetup.com/Miami-Machine-Learning-Meetup/events/246682816/
+
+* Slides: 
+* Video: 
 
 ## Jupyter notebooks
 
@@ -35,10 +42,3 @@ To launch long-running experiments, there are two experiments set up:
 * `experiments/classification_keras.py`: Keras models. Note that you should use a GPU instance type when running keras models.
 
 Example configurations for these experiments (along with code to run them) are in the `examples/tpot_medicare.py` and `examples/keras_medicare.py` files.
-
-## Guided walkthrough
-
-This repo was presented in a talk titled "Machine learning in the cloud with Amazon Web Services" for the Miami Machine Learning Meetup group: https://www.meetup.com/Miami-Machine-Learning-Meetup/events/246682816/
-
-* Slides: 
-* Video: 
