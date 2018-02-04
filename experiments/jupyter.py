@@ -49,6 +49,9 @@ if bid_price:
         MinCount=1,
         KeyName=key_name,
         InstanceInitiatedShutdownBehavior='terminate',
+        IamInstanceProfile={
+            'Name': 'ec2_role'
+        },
         InstanceMarketOptions={
             'MarketType': 'spot',
             'SpotOptions': {
@@ -66,6 +69,9 @@ else:
         MinCount=1,
         KeyName=key_name,
         InstanceInitiatedShutdownBehavior='terminate',
+        IamInstanceProfile={
+            'Name': 'ec2_role'
+        },
         TagSpecifications=tags
     )
 

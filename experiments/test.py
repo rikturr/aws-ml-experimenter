@@ -11,6 +11,6 @@ logger.addHandler(console_handler)
 
 config_module = sys.argv[1]
 logger.info('Using config: {}'.format(config_module))
-config = importlib.import_module('settings.{}'.format(config_module))
+config = importlib.import_module(config_module)
 
 logger.info('Myvar = {}'.format(config.myvar))

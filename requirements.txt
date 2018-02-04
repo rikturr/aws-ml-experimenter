@@ -5,3 +5,4 @@ pandas
 numpy
 feather-format
 scipy
+tpot
