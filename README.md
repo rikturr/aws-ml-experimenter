@@ -4,12 +4,27 @@ This project contains scripts to run ML experiments on AWS EC2 instances fairly 
 
 Prerequisites:
 
-* AWS account
+* AWS account and credentials configured locally
 * .pem file for SSH-ing onto your EC2 instances
+* IAM role with S3 access to your bucket, must be named "ec2_role"
+* The AWS user must have EC2 and S3 permissions, along with IAM Pass Role (see below) for spinning up instances with access to S3
 
 Make sure the .pem file is named exactly the same as the key name on your AWS account. The experiment scripts assume the names are the same. If your key is called "mykey" on your AWS account, then the pem file should be called "mykey.pem".
 
 Use the `--bid-price` flag to take advantage of SPOT instances and save money!
+
+IAM pass role policy:
+
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Action": "iam:PassRole",
+        "Resource": "*"
+}]
+}
+```
 
 ## Guided walkthrough
 
