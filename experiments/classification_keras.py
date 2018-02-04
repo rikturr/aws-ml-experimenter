@@ -80,7 +80,7 @@ callbacks = [checkpointer, tensorboard, history_logger]
 # fit model
 model.fit_generator(func.sparse_generator(x_train, y_train, config.batch_size),
                     epochs=config.epochs,
-                    steps_per_epoch=--0 - - x_train.shape[0] / config.batch_size,
+                    steps_per_epoch=-0 - - x_train.shape[0] / config.batch_size,
                     validation_data=func.sparse_generator(x_val, y_val, config.batch_size),
                     validation_steps=-0 - - x_val.shape[0] / config.batch_size,
                     callbacks=callbacks)
