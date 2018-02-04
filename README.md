@@ -33,6 +33,12 @@ This repo was presented in a talk titled "Machine learning in the cloud with Ama
 * Slides: https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/aws_intro.pdf
 * Video: 
 
+Example notebooks:
+
+* Data prep: [medicare-data.ipynb](https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/medicare-data.ipynb)
+* Scikit-learn (Random Forest): [scikit-learn.ipynb](https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/scikit-learn.ipynb)
+* Keras (Multilayer Perceptron): [keras.ipynb](https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/keras.ipynb)
+
 ## Jupyter notebooks
 
 To run a jupyter notebook from an EC2, run the `experiments/jupyter.py` file:
