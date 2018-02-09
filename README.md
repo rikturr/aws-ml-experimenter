@@ -31,7 +31,7 @@ IAM pass role policy:
 This repo was presented in a talk titled "Machine learning in the cloud with Amazon Web Services" for the Miami Machine Learning Meetup group: https://www.meetup.com/Miami-Machine-Learning-Meetup/events/246682816/
 
 * Slides: https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/aws_intro.pdf
-* Video: 
+* Video: https://youtu.be/JIasG2DfDVc
 
 Example notebooks:
 
