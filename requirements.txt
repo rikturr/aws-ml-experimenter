@@ -6,3 +6,4 @@ numpy
 feather-format
 scipy
 tpot
+xgboost

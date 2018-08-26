@@ -4,12 +4,8 @@ import argparse
 import subprocess
 import uuid
 from datetime import datetime
-import io
-import numpy as np
-import pandas as pd
 import os
-import keras
-import time
+import io
 import json
 import sys
 
@@ -20,110 +16,10 @@ console_handler.setFormatter(logFormatter)
 console_handler.setLevel(logging.INFO)
 logger.addHandler(console_handler)
 
-REQUIREMENTS = ['boto3', 'scikit-learn==0.19.0', 'scipy==1.0.0']
-PIP_REQUIREMENTS = ['tpot']
-
+REQUIREMENTS = ['boto3', 'pandas', 'numpy', 'scikit-learn==0.19.0', 'scipy==1.0.0', 'feather-format', 'xgboost']
+PIP_REQUIREMENTS = ['tpot', 'imblearn']
 
 s3 = boto3.resource('s3')
-
-
-# HELPER FUNCTIONS FOR USE IN EXPERIMENT SCRIPTS
-
-def sparse_generator(x, y=None, batch_size=32):
-    index = np.arange(x.shape[0])
-    start = 0
-    while True:
-        if start == 0 and y is not None:
-            np.random.shuffle(index)
-
-        batch = index[start:start + batch_size]
-
-        if y is not None:
-            yield x[batch].toarray(), y[batch]
-        else:
-            yield x[batch].toarray()
-
-        start += batch_size
-        if start >= x.shape[0]:
-            start = 0
-
-
-class S3Checkpoint(keras.callbacks.ModelCheckpoint):
-    def __init__(self, filepath, s3_resource, bucket, s3_folder,
-                 monitor='val_loss', verbose=0,
-                 save_best_only=False, save_weights_only=False,
-                 mode='auto', period=1):
-        super(S3Checkpoint, self).__init__(filepath, monitor=monitor, verbose=verbose,
-                                           save_best_only=save_best_only, save_weights_only=save_weights_only,
-                                           mode=mode, period=period)
-        self.s3_resource = s3_resource
-        self.bucket = s3_resource.Bucket(bucket)
-        self.s3_folder = s3_folder
-
-    def on_epoch_end(self, epoch, logs=None):
-        super(S3Checkpoint, self).on_epoch_end(epoch, logs)
-        if self.epochs_since_last_save == 0:
-            local_filepath = self.filepath.format(epoch=epoch + 1, **logs)
-            self.bucket.upload_file(local_filepath, os.path.join(self.s3_folder, os.path.basename(local_filepath)))
-
-
-class S3HistoryLogger(keras.callbacks.Callback):
-    def __init__(self, s3_resource, bucket, model_id, history_folder):
-        super(S3HistoryLogger, self).__init__()
-        self.s3_resource = s3_resource
-        self.bucket = bucket
-        self.model_id = model_id
-        self.history_folder = history_folder
-
-    def to_csv_s3(self, df, key, index=False):
-        buf = io.StringIO()
-        df.to_csv(buf, index=index)
-        self.s3_resource.Object(self.bucket, key).put(Body=buf.getvalue())
-
-    def on_train_begin(self, logs=None):
-        self.epoch = []
-        self.history = {}
-        self.time = None
-
-    def on_epoch_begin(self, epoch, logs=None):
-        self.epoch_start_time = time.time()
-
-    def on_epoch_end(self, epoch, logs=None):
-        elapsed_time = time.time() - self.epoch_start_time
-
-        logs = logs or {}
-        self.epoch.append(epoch)
-
-        # get history - see keras.callbacks.History
-        for k, v in logs.items():
-            self.history.setdefault(k, []).append(v)
-        # add extra stuff
-        self.history.setdefault('epoch', []).append(epoch)
-        self.history.setdefault('elapsed_time', []).append(elapsed_time)
-        self.history.setdefault('model_id', []).append(self.model_id)
-
-        # save to s3
-        self.to_csv_s3(pd.DataFrame(self.history), os.path.join(self.history_folder, '{}.csv'.format(self.model_id)))
-
-
-def get_s3(bucket, key):
-    obj = s3.Object(bucket, key)
-    return io.BytesIO(obj.get()['Body'].read())
-
-
-def delete_recursive_s3(bucket, key):
-    objects_to_delete = s3.meta.client.list_objects(Bucket=bucket, Prefix=key)
-
-    delete_keys = {'Objects': [{'Key': k} for k in [obj['Key'] for obj in objects_to_delete.get('Contents', [])]]}
-
-    if delete_keys['Objects']:
-        s3.meta.client.delete_objects(Bucket=bucket, Delete=delete_keys)
-
-
-def to_csv_s3(df, bucket, key, index=False):
-    buf = io.StringIO()
-    df.to_csv(buf, index=index)
-    s3.Object(bucket, key).put(Body=buf.getvalue())
 
 
 def json_dump_s3(obj, bucket, key):
@@ -132,44 +28,43 @@ def json_dump_s3(obj, bucket, key):
     s3.Object(bucket, key).put(Body=buf.getvalue())
 
 
-def copy_dir_s3(path, bucket, key):
-    for f in os.listdir(path):
-        s3.Bucket(bucket).upload_file(os.path.join(path, f), os.path.join(key, f))
-
-
-def copy_s3(path, bucket, key):
-    s3.Bucket(bucket).upload_file(path, key)
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("script", help="Path to Python script")
+    parser.add_argument("folder", help="Path to experiments folder")
+    parser.add_argument("script", help="Name of Python script")
     parser.add_argument("config", help="Path to config file")
     parser.add_argument("pem", help="Name of the pem file.")
     parser.add_argument("s3", help="S3 bucket name")
+    parser.add_argument("--security-group", help="Security group")
+    parser.add_argument("--py-files", nargs='+', help="Extra Python files to send to the EC2 instance")
     parser.add_argument("--instance-type", default="m4.large")
     parser.add_argument("--bid-price", help="Max bid price for spot instance. If null, will use on-demand.")
+    parser.add_argument("--no-terminate", action='store_true')
 
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    script = args.script
+    folder = args.folder
+    script = os.path.join(folder, args.script)
     config = args.config
     pem_file = args.pem
     key_name = os.path.basename(pem_file).split('.')[0]
     s3_bucket = args.s3
     instance_type = args.instance_type
     bid_price = args.bid_price
+    py_files = args.py_files if args.py_files else []
+    terminate = not args.no_terminate
+    security_group = args.security_group
 
     ec2 = boto3.client('ec2')
 
     experiment_id = uuid.uuid4()
     experiment_date = datetime.now()
-    logger.warn('Experiment ID: {}'.format(experiment_id))
+    logger.warning('Experiment ID: {}'.format(experiment_id))
 
-    logger.warn('Launching instance')
+    logger.warning('Launching instance')
     tags = [{
         'ResourceType': 'instance',
         'Tags': [
@@ -181,7 +76,7 @@ if __name__ == "__main__":
     }]
     if bid_price:
         create = ec2.run_instances(
-            ImageId='ami-5c9aa926',
+            ImageId='ami-3a533040',
             InstanceType=instance_type,
             MaxCount=1,
             MinCount=1,
@@ -189,6 +84,11 @@ if __name__ == "__main__":
             IamInstanceProfile={
                 'Name': 'ec2_role'
             },
+            NetworkInterfaces=[{
+                'DeviceIndex': 0,
+                'AssociatePublicIpAddress': True,
+                'Groups': [security_group]
+            }],
             InstanceInitiatedShutdownBehavior='terminate',
             InstanceMarketOptions={
                 'MarketType': 'spot',
@@ -206,6 +106,11 @@ if __name__ == "__main__":
             MaxCount=1,
             MinCount=1,
             KeyName=key_name,
+            NetworkInterfaces=[{
+                'DeviceIndex': 0,
+                'AssociatePublicIpAddress': True,
+                'Groups': [security_group]
+            }],
             IamInstanceProfile={
                 'Name': 'ec2_role'
             },
@@ -214,14 +119,18 @@ if __name__ == "__main__":
         )
 
     instance_id = create['Instances'][0]['InstanceId']
-    logger.warn('Instance ID: {}'.format(instance_id))
+    logger.warning('Instance ID: {}'.format(instance_id))
 
     waiter = ec2.get_waiter('instance_status_ok')
     waiter.wait(InstanceIds=[instance_id])
 
     instance = ec2.describe_instances(InstanceIds=[instance_id])
     public_dns = instance['Reservations'][0]['Instances'][0]['PublicDnsName']
-    logger.warn('To view output:  ssh -i {pem} ec2-user@{host} "tail -100f log.txt"'.format(pem=pem_file, host=public_dns))
+    logger.warning('To view output:  ssh -i {pem} ec2-user@{host} "tail -100f log.txt"'.format(pem=pem_file, host=public_dns))
+
+    jupyter_command = 'ssh -i {pem} -L 8000:localhost:8888 ec2-user@{host}'.format(pem=pem_file, host=public_dns)
+    logger.warning('Jupyter tunnel command: {}'.format(jupyter_command))
+    logger.warning('Jupyter notebook command: jupyter notebook --no-browser --port=8888')
 
     exp_data = {'experiment_id': '{}'.format(experiment_id),
                 'experiment_date': '{}'.format(experiment_date),
@@ -231,7 +140,7 @@ if __name__ == "__main__":
                 'terminate': 'aws ec2 terminate-instances --instance-ids {}'.format(instance_id),
                 'tail_log': 'ssh -i {pem} ec2-user@{host} "tail -100f log.txt"'.format(pem=pem_file, host=public_dns)
                 }
-    json_dump_s3(exp_data, s3_bucket, 'experiments/{}_{}.json'.format(experiment_date.strftime('%Y-%m-%d_%H:%M:%S'), experiment_id))
+    json_dump_s3(exp_data, s3_bucket, 'experiments/json/{}_{}.json'.format(experiment_date.strftime('%Y-%m-%d_%H:%M:%S'), experiment_id))
 
     commands = """
     source activate tensorflow_p36
@@ -239,6 +148,7 @@ if __name__ == "__main__":
     instanceid={instance_id}
 
     echo 'Installing dependencies'
+    sudo yum -y install htop
     conda install {dep} -c conda-forge
     pip install {pip_dep}
 
@@ -249,10 +159,7 @@ if __name__ == "__main__":
     logdate=$(date '+%Y-%m-%d_%H:%M:%S_')
     logfile="$logdate$instanceid"
     aws s3 cp log.txt "s3://{bucket}/logs/$logfile.txt"
-    aws s3 cp resources.csv "s3://{bucket}/logs/$logfile-resources.csv"
-
-    # Terminate instance
-    sudo shutdown -h now
+    aws s3 cp resources.csv "s3://{bucket}/experiments/logs/$logfile-resources.csv"
     """.format(instance_id=instance_id,
                dep=' '.join(REQUIREMENTS),
                pip_dep=' '.join(PIP_REQUIREMENTS),
@@ -260,7 +167,16 @@ if __name__ == "__main__":
                config=os.path.basename(config).split('.')[0],
                exp_id=experiment_id,
                bucket=s3_bucket)
-    with open("/tmp/command.sh", "w") as text_file:
+    terminate_command = """
+    # Terminate instance
+    sudo shutdown -h now
+    """
+    if terminate:
+        commands += terminate_command
+
+    command_script = 'command-{}.sh'.format(experiment_id)
+    command_path = os.path.join('/tmp', command_script)
+    with open(command_path, "w") as text_file:
         text_file.write(commands)
 
     log_resources = """
@@ -286,18 +202,21 @@ if __name__ == "__main__":
         text_file.write(tensorboard)
 
     # copy scripts to instance (sys.argv[0] is this script "run_experiment.py")
-    for s in [script, config, sys.argv[0], '/tmp/command.sh', '/tmp/log_resources.sh', '/tmp/tensorboard.sh']:
+    for s in [folder, script, config, sys.argv[0], command_path, '/tmp/log_resources.sh', '/tmp/tensorboard.sh'] + py_files:
         ssh_command = "scp -r -i {} -o StrictHostKeyChecking=no {} ec2-user@{}:/home/ec2-user".format(pem_file, s, public_dns)
         subprocess.check_call(ssh_command, shell=True)
 
     # launch experiment
-    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash command.sh &> log.txt &"'.format(pem=pem_file, host=public_dns)
+    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash {script} &> log.txt &"'.format(pem=pem_file, host=public_dns,
+                                                                                                                       script=command_script)
     subprocess.Popen(ssh_command, shell=True)
 
     # launch resource logging
-    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash log_resources.sh &> resources.csv &"'.format(pem=pem_file, host=public_dns)
+    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash log_resources.sh &> resources.csv &"'.format(pem=pem_file,
+                                                                                                                                     host=public_dns)
     subprocess.Popen(ssh_command, shell=True)
 
     # launch tensorboard
-    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash tensorboard.sh &> tensorboard_log.txt &"'.format(pem=pem_file,                                                                                                                           host=public_dns)
+    ssh_command = 'ssh -i {pem} -o StrictHostKeyChecking=no ec2-user@{host} "nohup bash tensorboard.sh &> tensorboard_log.txt &"'.format(pem=pem_file,
+                                                                                                                                         host=public_dns)
     subprocess.Popen(ssh_command, shell=True)
