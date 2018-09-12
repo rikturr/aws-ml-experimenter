@@ -106,3 +106,4 @@ ENV/
 .Rproj.user
 .Renviron
 .Rprofile
+rsconnect*
