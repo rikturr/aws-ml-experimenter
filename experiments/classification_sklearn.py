@@ -85,8 +85,6 @@ if 'reduce_pos_samples' in config.ml_config and config.ml_config['reduce_pos_sam
                 x_train_pos[num_pos].append(x_train[pos_idx, :])
                 y_train_pos[num_pos].append(y_train[pos_idx])
 
-        x_train = None
-        y_train = None
     else:
         raise ValueError('Need to specify both reduce_pos_sample and reduce_pos_runs')
 
@@ -147,7 +145,7 @@ for c in dict_product(config.ml_config):
                     x_samp = np.vstack([x_train_neg, x_train_pos[c['reduce_pos_samples']][x]])
                 y_samp = np.append(y_train_neg, y_train_pos[c['reduce_pos_samples']][x])
 
-                reduce_results.append(cross_validate_repeat(model, x_samp, y=y_samp, scoring=metrics, runs=runs, n_jobs=n_jobs, folds=folds,
+                reduce_results.append(cross_validate_repeat(model, x_samp, y=y_samp, scoring=metrics, runs=1, n_jobs=n_jobs, folds=folds,
                                                             random_state=config.random_state, metadata=metadata))
             results = pd.concat(reduce_results)
         else:

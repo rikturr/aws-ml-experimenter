@@ -28,11 +28,18 @@ def json_dump_s3(obj, bucket, key):
     s3.Object(bucket, key).put(Body=buf.getvalue())
 
 
+def valid_file(x):
+    if os.path.exists(x):
+        return x
+    else:
+        raise ValueError('Path does not exist: {}'.format(x))
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("folder", help="Path to experiments folder")
+    parser.add_argument("folder", help="Path to experiments folder", type=valid_file)
     parser.add_argument("script", help="Name of Python script")
-    parser.add_argument("config", help="Path to config file")
+    parser.add_argument("config", help="Path to config file", type=valid_file)
     parser.add_argument("pem", help="Name of the pem file.")
     parser.add_argument("s3", help="S3 bucket name")
     parser.add_argument("--security-group", help="Security group")
@@ -186,7 +193,7 @@ if __name__ == "__main__":
     while true
     do
         sleep 1
-        echo "$(date '+%Y-%m-%d %H:%M:%S'),$(free -m | awk 'NR==2{printf "%s,%s\n", $3,$4 }'),$(df / -h | grep -v Filesystem | awk -F' ' '{printf "%s,%s\n", $3,$4}'),\"$(uptime)\""
+        echo "$(date '+%Y-%m-%d %H:%M:%S'),$(free -m | awk 'NR==2{printf \'%s,%s\n\', $3,$4 }'),$(df / -h | grep -v Filesystem | awk -F' ' '{printf \'s,%s\n\', $3,$4}'),\"$(uptime)\""
     done
     """
     with open("/tmp/log_resources.sh", "w") as text_file:
