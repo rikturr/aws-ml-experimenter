@@ -50,8 +50,9 @@ To make sure your AWS account is setup properly, run the test experiment:
 
 This should create a log file on your S3 bucket printing out "Hello world!" at the end.
 
-To launch long-running experiments, there are two experiments set up:
+To launch long-running experiments, there are some experiments set up:
 
+* `experiments/classification_sklearn.py`: scikit-learn 
 * `experiments/classification_tpot.py`: [TPOT](https://github.com/EpistasisLab/tpot) with scikit-learn 
 * `experiments/classification_keras.py`: Keras models. Note that you should use a GPU instance type when running keras models.
 
