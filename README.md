@@ -26,13 +26,6 @@ IAM pass role policy:
 }
 ```
 
-## Guided walkthrough
-
-This repo was presented in a talk titled "Machine learning in the cloud with Amazon Web Services" for the Miami Machine Learning Meetup group: https://www.meetup.com/Miami-Machine-Learning-Meetup/events/246682816/
-
-* Slides: https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/aws_intro.pdf
-* Video: https://youtu.be/JIasG2DfDVc
-
 Example notebooks:
 
 * Data prep: [medicare-data.ipynb](https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/medicare-data.ipynb)
@@ -63,3 +56,19 @@ To launch long-running experiments, there are two experiments set up:
 * `experiments/classification_keras.py`: Keras models. Note that you should use a GPU instance type when running keras models.
 
 Example configurations for these experiments (along with code to run them) are in the `examples/tpot_medicare.py` and `examples/keras_medicare.py` files.
+
+## Dashboard
+
+A Shiny project is in the `dashboard/` folder than can visualize the results of the experiments, using the result files saved to S3.
+
+![Shiny](dashboard.png)
+
+
+## Guided walkthroughs
+
+### Miami Machine Learning meetup
+
+This repo was presented in a talk titled "Machine learning in the cloud with Amazon Web Services" for the Miami Machine Learning Meetup group: https://www.meetup.com/Miami-Machine-Learning-Meetup/events/246682816/
+
+* Slides: https://github.com/rikturr/aws-ml-experimenter/blob/master/examples/aws_intro.pdf
+* Video: https://youtu.be/JIasG2DfDVc
