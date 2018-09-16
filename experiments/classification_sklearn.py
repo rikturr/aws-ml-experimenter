@@ -5,7 +5,7 @@ import scipy.sparse as sp
 import numpy as np
 from sklearn.externals import joblib
 import importlib
-import sys
+import argparse
 from imblearn.pipeline import make_pipeline
 import uuid
 import pandas as pd
@@ -22,11 +22,24 @@ logger.addHandler(console_handler)
 
 RESULTS_STAGING = '/tmp/results'
 
-# load config
-config_module = sys.argv[1]
-logger.warning('Using config: {}'.format(config_module))
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_module", help="Config module")
+    parser.add_argument("config_num", type=int, help="Which iteration of the config to use")
+    parser.add_argument("--experiment-id", help="Assign experiment ID")
+
+    return parser.parse_args()
+
+
+args = parse_args()
+config_module = args.config_module
+logger.warning('Using config: {}'.format(config_module))
 config = importlib.import_module(config_module)
+config_num = args.config_num
+config_name = config.configs[config_num]['name']
+ml_config = config.configs[config_num]['ml_config']
+
 path = config.base_path
 local = config.local
 name = config.name
@@ -37,6 +50,7 @@ save_model = hasattr(config, 'save_model') and config.save_model
 metrics = hasattr(config, 'metrics') and config.metrics
 runs = config.runs if hasattr(config, 'runs') else 1
 folds = config.folds if hasattr(config, 'folds') else 5
+experiment_id = args.experiment_id or uuid.uuid4()
 
 instance_id = None
 instance_type = None
@@ -65,20 +79,20 @@ x_train_neg = None
 y_train_neg = None
 x_train_pos = {}
 y_train_pos = {}
-if 'reduce_pos_samples' in config.ml_config and config.ml_config['reduce_pos_samples']:
-    if 'reduce_pos_runs' in config.ml_config and config.ml_config['reduce_pos_runs']:
-        if len(config.ml_config['reduce_pos_runs']) > 1:
+if 'reduce_pos_samples' in ml_config and ml_config['reduce_pos_samples']:
+    if 'reduce_pos_runs' in ml_config and ml_config['reduce_pos_runs']:
+        if len(ml_config['reduce_pos_runs']) > 1:
             raise ValueError('Only support one setting of reduce_pos_runs or reduce_pos_samples')
 
         neg_idx = np.nonzero(y_train == 0)[0]
         x_train_neg = x_train[neg_idx, :]
         y_train_neg = y_train[neg_idx]
 
-        for num_pos in config.ml_config['reduce_pos_samples']:
+        for num_pos in ml_config['reduce_pos_samples']:
             logger.warning('Starting pre-sampling for {}'.format(num_pos))
             x_train_pos[num_pos] = []
             y_train_pos[num_pos] = []
-            for x in range(config.ml_config['reduce_pos_runs'][0]):
+            for x in range(ml_config['reduce_pos_runs'][0]):
                 logger.warning('Pre-sampling dataset {}'.format(x))
                 np.random.seed(config.random_state + x)
                 pos_idx = np.random.choice(np.nonzero(y_train == 1)[0], num_pos, replace=False)
@@ -89,11 +103,13 @@ if 'reduce_pos_samples' in config.ml_config and config.ml_config['reduce_pos_sam
         raise ValueError('Need to specify both reduce_pos_sample and reduce_pos_runs')
 
 # run experiment
-for c in dict_product(config.ml_config):
+for c in dict_product(ml_config):
     metadata = {k: get_object_name(v) for k, v in c.items()}
+    metadata['experiment_id'] = experiment_id
+    metadata['model'] = get_object_name(c['model'][-1])
     model_uuid = uuid.uuid4()
     metadata['model_uuid'] = model_uuid
-    metadata['config'] = config_module
+    metadata['config'] = '{}.{}'.format(config_module, config_name)
     metadata['instance_id'] = instance_id
     metadata['instance_type'] = instance_type
     metadata['dataset'] = name
@@ -112,11 +128,9 @@ for c in dict_product(config.ml_config):
     if 'sampling_ratio' in c and c['sampling_ratio']:
         pipeline += [RatioRandomUnderSampler(c['sampling_ratio'], random_state=config.random_state)]
 
-    clf = c['model']
-    if 'pos_weight' in c and c['pos_weight']:
-        clf.class_weight = {0: 1, 1: c['pos_weight']}
-
-    model = make_pipeline(*(pipeline + [clf]))
+    pipeline.extend(c['model'])
+    model = make_pipeline(*pipeline)
+    print(model)
 
     if save_model:
         model.fit(x_train[:, config.feat_start_idx:], y_train)
@@ -130,7 +144,6 @@ for c in dict_product(config.ml_config):
 
     # cross-validation
     logger.warning('Running cross-validation')
-    model = make_pipeline(*(pipeline + [clf]))
 
     results = None
     # pre sampling of positive instances (for class imbalance testing)
