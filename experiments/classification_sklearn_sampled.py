@@ -1,15 +1,12 @@
 from experiments.helpers import *
 import logging
 import os
-import scipy.sparse as sp
 import numpy as np
 from sklearn.externals import joblib
 import importlib
 import argparse
-from imblearn.pipeline import make_pipeline
+from sklearn.pipeline import make_pipeline
 import uuid
-import pandas as pd
-from datetime import datetime
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -74,11 +71,11 @@ for c in dict_product(ml_config):
     metadata['dataset'] = name
     logger.warning('Running: {}'.format(metadata))
 
-    x_file_path = 'size={s}/pos_ratio={pr}/ecbdl_train_X_{s}_{pr}_{r}.npy'.format(s=c['size'], pr=c['pos_ratio'], r=c['run'])
+    x_file_path = 'size={s}/pos_ratio={pr}/{name}_train_X_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
     x_file = os.path.join(data_path, x_file_path) if local else get_s3('{}/{}'.format(data_path, x_file_path), bucket=bucket)
     x = np.load(x_file)
 
-    y_file_path = 'size={s}/pos_ratio={pr}/ecbdl_train_Y_{s}_{pr}_{r}.npy'.format(s=c['size'], pr=c['pos_ratio'], r=c['run'])
+    y_file_path = 'size={s}/pos_ratio={pr}/{name}_train_Y_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
     y_file = os.path.join(data_path, y_file_path) if local else get_s3('{}/{}'.format(data_path, y_file_path), bucket=bucket)
     y = np.load(y_file)
     logger.warning('Loaded data files')

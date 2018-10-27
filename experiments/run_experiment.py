@@ -19,7 +19,7 @@ console_handler.setLevel(logging.INFO)
 logger.addHandler(console_handler)
 
 REQUIREMENTS = ['boto3', 'pandas', 'numpy', 'scikit-learn==0.19.0', 'scipy==1.0.0', 'feather-format', 'xgboost']
-PIP_REQUIREMENTS = ['tpot', 'imblearn']
+PIP_REQUIREMENTS = ['tpot', 'imbalanced-learn==0.3.3', 'tables==3.4.4']
 
 s3 = boto3.resource('s3')
 
