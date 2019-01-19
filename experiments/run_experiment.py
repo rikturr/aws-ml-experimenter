@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument("--instance-type", default="m4.large")
     parser.add_argument("--bid-price", help="Max bid price for spot instance. If null, will use on-demand.")
     parser.add_argument("--no-terminate", action='store_true')
+    parser.add_argument("--availability-zone", action='store_true', default='us-east-1b')
 
     return parser.parse_args()
 
@@ -66,6 +67,7 @@ if __name__ == "__main__":
     terminate = not args.no_terminate
     security_group = args.security_group
     config_path = args.config
+    az = args.availability_zone
 
     ec2 = boto3.client('ec2')
 
@@ -92,6 +94,9 @@ if __name__ == "__main__":
             MaxCount=num_configs,
             MinCount=num_configs,
             KeyName=key_name,
+            Placement={
+                'AvailabilityZone': az
+            },
             IamInstanceProfile={
                 'Name': 'ec2_role'
             },
@@ -117,6 +122,9 @@ if __name__ == "__main__":
             MaxCount=num_configs,
             MinCount=num_configs,
             KeyName=key_name,
+            Placement={
+                'AvailabilityZone': az
+            },
             NetworkInterfaces=[{
                 'DeviceIndex': 0,
                 'AssociatePublicIpAddress': True,

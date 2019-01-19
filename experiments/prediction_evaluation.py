@@ -36,7 +36,8 @@ config_name = config.configs[config_num]['name']
 ml_config = config.configs[config_num]['ml_config']
 
 path = config.base_path
-data_path = config.data_path
+x_test_file = config.x_test_file
+y_test_file = config.y_test_file
 local = config.local
 name = config.name
 bucket = config.bucket
@@ -58,19 +59,16 @@ else:
         logger.warning('Could not get EC2 instance-id or instance-type')
 
 # load data
-if local:
-    test_file = data_path
-else:
-    test_file = temp_path
-    s3.Bucket(bucket).download_file(data_path, test_file)
+logger.warning('Loading data files from {}, {}'.format(x_test_file, y_test_file))
+x_file = x_test_file if local else get_s3(x_test_file, bucket=bucket)
+x = np.load(x_file)
 
-logger.warning('Loading data files from {}'.format(data_path))
-test_pos = pd.read_hdf(test_file, 'positive').drop(class_col, axis=1).values
-test_neg = pd.read_hdf(test_file, 'negative').drop(class_col, axis=1).values
+y_file = y_test_file if local else get_s3(y_test_file, bucket=bucket)
+y = np.load(y_file)
 
 
-def make_predict(model, df, actual, threshold=0.5):
-    pred = model.predict_proba(df)
+def make_predict(model, x, actual, threshold=0.5):
+    pred = model.predict_proba(x)
     pred_df = pd.DataFrame(pred)
     pred_df['actual'] = actual
     pred_df['predicted'] = (pred_df[1] > threshold).astype(int)
@@ -109,9 +107,7 @@ for c in dict_product(ml_config):
     logger.warning('Loaded model {}'.format(model))
 
     # predict
-    pos_pred = make_predict(model, test_pos, 1)
-    neg_pred = make_predict(model, test_neg, 0)
-    pred_df = pd.concat([pos_pred, neg_pred])
+    pred_df = make_predict(model, x, y)
     logger.warning('Got predictions')
 
     # metrics

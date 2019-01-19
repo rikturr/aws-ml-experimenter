@@ -39,6 +39,8 @@ ml_config = config.configs[config_num]['ml_config']
 
 path = config.base_path
 data_path = config.data_path
+x_path = config.x_path if hasattr(config, 'x_path') else None
+y_path = config.y_path if hasattr(config, 'y_path') else None
 local = config.local
 name = config.name
 bucket = config.bucket
@@ -71,11 +73,17 @@ for c in dict_product(ml_config):
     metadata['dataset'] = name
     logger.warning('Running: {}'.format(metadata))
 
-    x_file_path = 'size={s}/pos_ratio={pr}/{name}_train_X_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
+    if x_path:
+        x_file_path = x_path
+    else:
+        x_file_path = 'size={s}/pos_ratio={pr}/{name}_train_X_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
     x_file = os.path.join(data_path, x_file_path) if local else get_s3('{}/{}'.format(data_path, x_file_path), bucket=bucket)
     x = np.load(x_file)
 
-    y_file_path = 'size={s}/pos_ratio={pr}/{name}_train_Y_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
+    if y_path:
+        y_file_path = y_path
+    else:
+        y_file_path = 'size={s}/pos_ratio={pr}/{name}_train_Y_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
     y_file = os.path.join(data_path, y_file_path) if local else get_s3('{}/{}'.format(data_path, y_file_path), bucket=bucket)
     y = np.load(y_file)
     logger.warning('Loaded data files')
