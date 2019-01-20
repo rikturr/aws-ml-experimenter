@@ -49,7 +49,10 @@ def parse_args():
     parser.add_argument("--instance-type", default="m4.large")
     parser.add_argument("--bid-price", help="Max bid price for spot instance. If null, will use on-demand.")
     parser.add_argument("--no-terminate", action='store_true')
-    parser.add_argument("--availability-zone", action='store_true', default='us-east-1b')
+    parser.add_argument("--availability-zone", default='us-east-1b')
+    parser.add_argument("--iam-instance-profile", default='ec2_role')
+    parser.add_argument("--tags", help="Path to tags JSON file")
+    parser.add_argument("--subnet-id")
 
     return parser.parse_args()
 
@@ -68,6 +71,9 @@ if __name__ == "__main__":
     security_group = args.security_group
     config_path = args.config
     az = args.availability_zone
+    iam = args.iam_instance_profile
+    tags_json = json.load(open(args.tags)) if args.tags else None
+    subnet_id = args.subnet_id
 
     ec2 = boto3.client('ec2')
 
@@ -78,15 +84,21 @@ if __name__ == "__main__":
     logger.warning('Experiment ID: {}'.format(experiment_id))
 
     logger.warning('Launching instance(s)')
-    tags = [{
-        'ResourceType': 'instance',
-        'Tags': [
-            {
-                'Key': 'app',
-                'Value': 'machine_learning'
-            }
-        ]
-    }]
+    if tags_json:
+        tags = [{
+            'ResourceType': 'instance',
+            'Tags': tags_json
+        }]
+    else:
+        tags = [{
+            'ResourceType': 'instance',
+            'Tags': [
+                {
+                    'Key': 'app',
+                    'Value': 'machine_learning'
+                }
+            ]
+        }]
     if bid_price:
         create = ec2.run_instances(
             ImageId='ami-3a533040',
@@ -98,11 +110,12 @@ if __name__ == "__main__":
                 'AvailabilityZone': az
             },
             IamInstanceProfile={
-                'Name': 'ec2_role'
+                'Name': iam
             },
             NetworkInterfaces=[{
                 'DeviceIndex': 0,
                 'AssociatePublicIpAddress': True,
+                'SubnetId': subnet_id,
                 'Groups': [security_group]
             }],
             InstanceInitiatedShutdownBehavior='terminate',
@@ -128,10 +141,11 @@ if __name__ == "__main__":
             NetworkInterfaces=[{
                 'DeviceIndex': 0,
                 'AssociatePublicIpAddress': True,
+                'SubnetId': subnet_id,
                 'Groups': [security_group]
             }],
             IamInstanceProfile={
-                'Name': 'ec2_role'
+                'Name': iam
             },
             InstanceInitiatedShutdownBehavior='terminate',
             TagSpecifications=tags

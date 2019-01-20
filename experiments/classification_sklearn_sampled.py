@@ -92,7 +92,7 @@ for c in dict_product(ml_config):
     model.fit(x, y)
 
     logger.warning('Saving model: {}'.format(model_uuid))
-    dump_path = 'size={s}/pos_ratio={pr}/ecbdl_{clf}_{s}_{pr}_{r}.pkl'.format(clf=metadata['model'], s=c['size'], pr=c['pos_ratio'], r=c['run'])
+    dump_path = 'size={s}/pos_ratio={pr}/{name}_{clf}_{s}_{pr}_{r}.pkl'.format(name=name, clf=metadata['model'], s=c['size'], pr=c['pos_ratio'], r=c['run'])
     if local:
         joblib.dump(model, os.path.join(path, 'models', dump_path))
     else:
