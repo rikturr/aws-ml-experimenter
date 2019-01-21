@@ -46,6 +46,7 @@ experiment_id = args.experiment_id or uuid.uuid4()
 threshold_metrics = config.threshold_metrics
 metrics = config.metrics
 temp_path = config.temp_path if hasattr(config, 'temp_path') else None
+sparse = hasattr(config, 'sparse') and config.sparse
 
 instance_id = None
 instance_type = None
@@ -61,7 +62,10 @@ else:
 # load data
 logger.warning('Loading data files from {}, {}'.format(x_test_file, y_test_file))
 x_file = x_test_file if local else get_s3(x_test_file, bucket=bucket)
-x = np.load(x_file)
+if sparse:
+    x = sp.load_npz(x_file)
+else:
+    x = np.load(x_file)
 
 y_file = y_test_file if local else get_s3(y_test_file, bucket=bucket)
 y = np.load(y_file)
