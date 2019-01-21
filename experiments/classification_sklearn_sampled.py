@@ -49,6 +49,8 @@ save_model = hasattr(config, 'save_model') and config.save_model
 metrics = hasattr(config, 'metrics') and config.metrics
 experiment_id = args.experiment_id or uuid.uuid4()
 
+x_ext = 'npz' if sparse else 'npy'
+
 instance_id = None
 instance_type = None
 if local:
@@ -76,9 +78,12 @@ for c in dict_product(ml_config):
     if x_path:
         x_file_path = x_path
     else:
-        x_file_path = 'size={s}/pos_ratio={pr}/{name}_train_X_{s}_{pr}_{r}.npy'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'])
+        x_file_path = 'size={s}/pos_ratio={pr}/{name}_train_X_{s}_{pr}_{r}.{ext}'.format(name=name, s=c['size'], pr=c['pos_ratio'], r=c['run'], ext=x_ext)
     x_file = os.path.join(data_path, x_file_path) if local else get_s3('{}/{}'.format(data_path, x_file_path), bucket=bucket)
-    x = np.load(x_file)
+    if sparse:
+        x = sp.load_npz(x_file)
+    else:
+        x = np.load(x_file)
 
     if y_path:
         y_file_path = y_path
