@@ -47,6 +47,7 @@ threshold_metrics = config.threshold_metrics
 metrics = config.metrics
 temp_path = config.temp_path if hasattr(config, 'temp_path') else None
 sparse = hasattr(config, 'sparse') and config.sparse
+class_ratio = config.class_ratio if hasattr(config, 'class_ratio') else None
 
 instance_id = None
 instance_type = None
@@ -111,7 +112,7 @@ for c in dict_product(ml_config):
     logger.warning('Loaded model {}'.format(model))
 
     # predict
-    pred_df = make_predict(model, x, y)
+    pred_df = make_predict(model, x, y, threshold=c['pos_ratio'] if c['pos_ratio'] > 0 else class_ratio)
     logger.warning('Got predictions')
 
     # metrics

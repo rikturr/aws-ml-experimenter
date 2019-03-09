@@ -10,13 +10,14 @@ from imblearn.under_sampling import RandomUnderSampler
 import os
 from sklearn.model_selection import StratifiedShuffleSplit, StratifiedKFold, cross_validate
 from sklearn.feature_selection.univariate_selection import SelectKBest
+from sklearn.pipeline import make_pipeline
 import json
 import warnings
 import time
 from imblearn.over_sampling import RandomOverSampler, SMOTE
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.feature_selection import chi2
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.preprocessing import FunctionTransformer, Normalizer, StandardScaler, MaxAbsScaler
 from sklearn.utils import sparsefuncs as spf
 
 
@@ -220,6 +221,10 @@ def sparse_relu(x):
     return x
 
 
+def relu(x):
+    return x * (x > 0)
+
+
 def get_s3(key, bucket):
     obj = s3.Object(bucket, key)
     return io.BytesIO(obj.get()['Body'].read())
@@ -348,8 +353,8 @@ class DatasetStats(object):
 
     def _run_kmeans(self, n_clusters, random_state):
         kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=random_state, batch_size=1000)
-        kmeans.fit(self._X)
-        rmsd = np.sqrt(kmeans.inertia_ / self._X.shape[0])
+        kmeans.fit(self._X_norm)
+        rmsd = np.sqrt(kmeans.inertia_ / self._X_norm.shape[0])
         return rmsd
 
     def _kmeans_rmsd(self, n_clusters, runs=5):
@@ -421,8 +426,13 @@ class DatasetStats(object):
             return np.apply_along_axis(np.std, 0, self._X)
 
     def chi2(self):
-        ft = FunctionTransformer(np.abs, accept_sparse=True)
-        x_abs = ft.fit_transform(self._X)
+        if self._sparse:
+            pipeline = make_pipeline(MaxAbsScaler(), FunctionTransformer(sparse_relu, accept_sparse=True))
+            x_abs = pipeline.fit_transform(self._X)
+        else:
+            x_abs = self._X_norm
+            np.maximum(x_abs, 0, x_abs)
+
         chi2_score, pval = chi2(x_abs, self._Y)
         return chi2_score
 
@@ -431,6 +441,7 @@ class DatasetStats(object):
         self.Y = Y
         # these are used for "current" dataset to run
         self._X = X
+        self._X_norm = None
         self._Y = Y
         self._sparse = sparse
         self._random_state = random_state
@@ -481,6 +492,8 @@ class DatasetStats(object):
         return self
 
     def run_data(self, data):
+        self._X_norm = Normalizer().fit_transform(self._X)
+
         for m in self._table_metrics:
             start = time.time()
             out_val = m()
