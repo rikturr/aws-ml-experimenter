@@ -10,10 +10,16 @@ from imblearn.under_sampling import RandomUnderSampler
 import os
 from sklearn.model_selection import StratifiedShuffleSplit, StratifiedKFold, cross_validate
 from sklearn.feature_selection.univariate_selection import SelectKBest
+from sklearn.pipeline import make_pipeline
 import json
 import warnings
 import time
 from imblearn.over_sampling import RandomOverSampler, SMOTE
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.feature_selection import chi2
+from sklearn.preprocessing import FunctionTransformer, Normalizer, StandardScaler, MaxAbsScaler
+from sklearn.utils import sparsefuncs as spf
+
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 import keras
@@ -215,6 +221,10 @@ def sparse_relu(x):
     return x
 
 
+def relu(x):
+    return x * (x > 0)
+
+
 def get_s3(key, bucket):
     obj = s3.Object(bucket, key)
     return io.BytesIO(obj.get()['Body'].read())
@@ -304,3 +314,234 @@ def cross_validate_repeat(estimator, X, y=None, scoring=None, n_jobs=1, verbose=
             result[m] = metadata[m]
         results = pd.concat([results, result])
     return results
+
+
+class DatasetStats(object):
+
+    @staticmethod
+    def relu(x):
+        return np.maximum(x, 0)
+
+    @staticmethod
+    def agg_column_stats(x):
+        funcs = [np.amax, np.amin, np.mean, np.median, np.std]
+        return pd.Series(x).apply(funcs).to_dict()
+
+    # Table stats
+
+    def num_instances(self):
+        return self._X.shape[0]
+
+    def num_positive(self):
+        return np.count_nonzero(self._Y == 1)
+
+    def num_negative(self):
+        return np.count_nonzero(self._Y == 0)
+
+    def positive_ratio(self):
+        return self.num_positive() / self.num_instances()
+
+    def num_attributes(self):
+        return self._X.shape[1]
+
+    def density(self):
+        if self._sparse:
+            nonzero = self._X.count_nonzero()
+        else:
+            nonzero = np.count_nonzero(self._X)
+        return nonzero / (self.num_instances() * self.num_attributes())
+
+    def _run_kmeans(self, n_clusters, random_state):
+        kmeans = MiniBatchKMeans(n_clusters=n_clusters, random_state=random_state, batch_size=1000)
+        kmeans.fit(self._X_norm)
+        rmsd = np.sqrt(kmeans.inertia_ / self._X_norm.shape[0])
+        return rmsd
+
+    def _kmeans_rmsd(self, n_clusters, runs=5):
+        rmsds = []
+        for i in range(runs):
+            rmsds.append(self._run_kmeans(n_clusters, self._random_state + i))
+        return np.mean(rmsds)
+
+    def kmeans_rmsd1(self):
+        return self._kmeans_rmsd(1)
+
+    def kmeans_rmsd2(self):
+        return self._kmeans_rmsd(2)
+
+    def kmeans_rmsd3(self):
+        return self._kmeans_rmsd(3)
+
+    def kmeans_rmsd4(self):
+        return self._kmeans_rmsd(4)
+
+    def kmeans_rmsd5(self):
+        return self._kmeans_rmsd(5)
+
+    def kmeans_rmsd6(self):
+        return self._kmeans_rmsd(6)
+
+    def kmeans_rmsd7(self):
+        return self._kmeans_rmsd(7)
+
+    def kmeans_rmsd8(self):
+        return self._kmeans_rmsd(8)
+
+    def kmeans_rmsd9(self):
+        return self._kmeans_rmsd(9)
+
+    def kmeans_rmsd10(self):
+        return self._kmeans_rmsd(10)
+
+    # Column stats
+
+    def amax(self):
+        if self._sparse:
+            return spf.min_max_axis(self._X, 0)[1]
+        else:
+            return np.apply_along_axis(np.amax, 0, self._X)
+
+    def amin(self):
+        if self._sparse:
+            return spf.min_max_axis(self._X, 0)[0]
+        else:
+            return np.apply_along_axis(np.amin, 0, self._X)
+
+    def mean(self):
+        if self._sparse:
+            return spf.mean_variance_axis(self._X, 0)[0]
+        else:
+            return np.apply_along_axis(np.mean, 0, self._X)
+
+    def median(self):
+        if self._sparse:
+            return spf.csc_median_axis_0(self._X.tocsc())
+        else:
+            return np.apply_along_axis(np.median, 0, self._X)
+
+    def std(self):
+        if self._sparse:
+            return np.sqrt(spf.mean_variance_axis(self._X, 0)[1])
+        else:
+            return np.apply_along_axis(np.std, 0, self._X)
+
+    def chi2(self):
+        if self._sparse:
+            pipeline = make_pipeline(MaxAbsScaler(), FunctionTransformer(sparse_relu, accept_sparse=True))
+            x_abs = pipeline.fit_transform(self._X)
+        else:
+            x_abs = self._X_norm
+            np.maximum(x_abs, 0, x_abs)
+
+        chi2_score, pval = chi2(x_abs, self._Y)
+        return chi2_score
+
+    def __init__(self, X, Y, sparse=False, random_state=42):
+        self.X = X
+        self.Y = Y
+        # these are used for "current" dataset to run
+        self._X = X
+        self._X_norm = None
+        self._Y = Y
+        self._sparse = sparse
+        self._random_state = random_state
+        self.table_metrics = [
+            self.num_instances,
+            self.num_positive,
+            self.num_negative,
+            self.positive_ratio,
+            self.num_attributes,
+            self.density,
+            self.kmeans_rmsd1,
+            self.kmeans_rmsd2,
+            self.kmeans_rmsd3,
+            self.kmeans_rmsd4,
+            self.kmeans_rmsd5,
+            self.kmeans_rmsd6,
+            self.kmeans_rmsd7,
+            self.kmeans_rmsd8,
+            self.kmeans_rmsd9,
+            self.kmeans_rmsd10,
+        ]
+        self.column_metrics = [
+            self.chi2,
+            self.amax,
+            self.amin,
+            self.mean,
+            self.median,
+            self.std,
+        ]
+        self._table_metrics = None
+        self._column_metrics = None
+        self.results = []
+        self.results_df = None
+
+    def include_all(self):
+        self._table_metrics = self.table_metrics
+        self._column_metrics = self.column_metrics
+        return self
+
+    def exclude(self, *args):
+        self._table_metrics = [m for m in self.table_metrics if m.__name__ not in args]
+        self._column_metrics = [m for m in self.column_metrics if m.__name__ not in args]
+        return self
+
+    def include(self, *args):
+        self._table_metrics = [m for m in self.table_metrics if m.__name__ in args]
+        self._column_metrics = [m for m in self.column_metrics if m.__name__ in args]
+        return self
+
+    def run_data(self, data):
+        self._X_norm = Normalizer().fit_transform(self._X)
+
+        for m in self._table_metrics:
+            start = time.time()
+            out_val = m()
+            end = time.time() - start
+
+            out = {
+                'metric': f'{data}_{m.__name__}',
+                'result': out_val,
+                'time': end,
+                'group': m.__name__,
+                'data': data
+            }
+            self.results.append(out)
+
+        for m in self._column_metrics:
+            start = time.time()
+            out_all = m()
+            end = time.time() - start
+
+            aggregated = self.agg_column_stats(out_all)
+            for k, v in aggregated.items():
+                out = {
+                    'metric': f'{data}_{m.__name__}_{k}',
+                    'result': v,
+                    'time': end,
+                    'group': m.__name__,
+                    'data': data,
+                }
+                self.results.append(out)
+
+    def run(self):
+        if self._table_metrics or self._column_metrics:
+            print('Running for full data')
+            self.run_data('all')
+
+            print('Running for positive only')
+            pos_idx = self.Y == 1
+            self._X = self.X[pos_idx]
+            self._Y = self.Y[pos_idx]
+            self.run_data('positive')
+
+            print('Running for negative only')
+            neg_idx = self.Y == 0
+            self._X = self.X[neg_idx]
+            self._Y = self.Y[neg_idx]
+            self.run_data('negative')
+
+            self.results_df = pd.DataFrame(self.results)
+            return self.results_df
+        else:
+            raise ValueError('Must select metrics using include_all(), include(), or exclude()')

@@ -11,6 +11,8 @@ library(tidyr)
 library(kableExtra)
 library(ggplot2)
 library(plotly)
+library(tibble)
+library(agricolae)
 
 passwords <- str_split(Sys.getenv('PASSWORDS'), ',')[[1]]
 bucket <- Sys.getenv('S3_BUCKET')
@@ -26,6 +28,7 @@ experiment <- Sys.getenv('EXPERIMENT')
 results <- get_object(bucket = bucket, object = glue("experiments/cv_results_combined/{experiment}.csv")) %>% 
   read_csv %>% 
   mutate(classifier = case_when(startsWith(model, 'MultinomialNB') ~ 'MNB',
+                                startsWith(model, 'GaussianNB') ~ 'NB',
                                 startsWith(model, 'CalibratedClassifierCV') ~ 'SVM',
                                 startsWith(model, 'LogisticRegression') ~ 'LR',
                                 startsWith(model, 'DecisionTreeClassifier') ~ 'DT',
@@ -34,11 +37,12 @@ results <- get_object(bucket = bucket, object = glue("experiments/cv_results_com
          sampling_ratio = coalesce(as.character(sampling_ratio), '0'),
          reduce_pos_samples = coalesce(as.character(reduce_pos_samples), 'All'))
 
-non_dim_cols <- c('config', 'dataset', 'fit_time', 'folds', 'instance_id',
+non_dim_cols <- c('config', 'dataset', 'fit_time', 'folds', 'instance_id', 'experiment_id',
                   'instance_type', 'model_uuid', 'reduce_pos_run', 'reduce_pos_runs', 'score_time',
                   'model')
 results_cols <- colnames(results)
-metrics_cols <- results_cols[startsWith(results_cols, 'train_') | startsWith(results_cols, 'test_')]
+metrics_cols <- results_cols[startsWith(results_cols, 'train_') | startsWith(results_cols, 'test_') |
+                               endsWith(results_cols, '_time')]
 dimensions <- results_cols[!results_cols %in% non_dim_cols & !results_cols %in% metrics_cols]
 
 mean_results <- function(df, gb, metric_name) {
@@ -77,6 +81,28 @@ results_plot <- function(results, facet, group, x, y, ncol = 2) {
     facet_wrap(c(facet), ncol = ncol) +
     theme_light()
   p
+}
+
+get_aov <- function(df, facs, metric) {
+  df %>% 
+    mutate_at(facs, factor) %>% 
+    aov(as.formula(str_c(metric, '~', str_c(facs, collapse = '*'))), data = .)
+}
+
+aov_df <- function(aov) {
+  summary(aov)[[1]] %>% rownames_to_column('Factor')
+}
+
+hsd_df <- function(aov, which, y) {
+  hsd <- HSD.test(aov,which)
+  hsd <- left_join(hsd$groups,hsd$means,by=c('means'=y))
+  hsd <- select(hsd,trt,M,means,std) %>% mutate(M = toupper(M))
+  if(length(which) > 1) {
+    colnames(hsd) <- c(paste(which, collapse = ':'), 'Group', y, 'SD')
+  } else {
+    colnames(hsd) <- c(which, 'Group', y, 'SD')
+  }
+  hsd
 }
 
 ui <- fluidPage(
@@ -154,6 +180,30 @@ ui <- fluidPage(
                         width = 3),
                         mainPanel(
                           uiOutput('results_tables')
+                        )
+                      )
+             ),
+             
+             tabPanel("Tests",
+                      sidebarLayout(
+                        sidebarPanel(
+                          selectInput('tests_factors',
+                                      'ANOVA Factors',
+                                      multiple = TRUE,
+                                      choices = NULL),
+                          selectInput('tests_metric',
+                                      'Metric',
+                                      choices = NULL),
+                          selectInput('tests_hsd_factors',
+                                      'HSD Factors',
+                                      multiple = TRUE,
+                                      choices = NULL)
+                        ),
+                        mainPanel(
+                          h2('ANOVA'),
+                          tableOutput('anova'),
+                          h2('HSD'),
+                          tableOutput('hsd')
                         )
                       )
              ),
@@ -281,6 +331,40 @@ server <- function(input, output, session) {
   
   ###############################
   
+  
+  ######## TESTS TAB ##############
+  
+  observe({
+    updateSelectInput(session,
+                      'tests_factors',
+                      choices = dimensions,
+                      selected = factor(dimensions))
+  })
+  
+  observe({
+    updateSelectInput(session,
+                      'tests_metric',
+                      choices = metrics_cols,
+                      selected = 'test_roc_auc')
+  })
+  
+  observe({
+    updateSelectInput(session,
+                      'tests_hsd_factors',
+                      choices = dimensions,
+                      selected = dimensions[1])
+  })
+  
+  anova <- reactive({
+    req(input$tests_factors)
+    get_aov(results, input$tests_factors, input$tests_metric)
+  })
+  
+  output$anova <- renderTable(aov_df(anova()),
+                              digits = 3)
+  
+  output$hsd <- renderTable(hsd_df(anova(), input$tests_hsd_factors, input$tests_metric),
+                            digits = 3)
   
 }
 
