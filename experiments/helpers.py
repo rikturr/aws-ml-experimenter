@@ -19,6 +19,7 @@ from sklearn.cluster import MiniBatchKMeans
 from sklearn.feature_selection import chi2
 from sklearn.preprocessing import FunctionTransformer, Normalizer, StandardScaler, MaxAbsScaler
 from sklearn.utils import sparsefuncs as spf
+from sklearn.metrics import roc_curve, roc_auc_score
 
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -28,6 +29,14 @@ warnings.resetwarnings()
 
 s3 = boto3.resource('s3')
 s3_client = boto3.client('s3')
+
+
+def check_data(*args):
+    for a in args:
+        if a.ndim == 1:
+            print(a.shape, np.unique(a, return_counts=True))
+        else:
+            print(a.shape)
 
 
 def get_object_name(x):
@@ -427,21 +436,21 @@ class DatasetStats(object):
 
     def chi2(self):
         if self._sparse:
-            pipeline = make_pipeline(MaxAbsScaler(), FunctionTransformer(sparse_relu, accept_sparse=True))
-            x_abs = pipeline.fit_transform(self._X)
+            x_abs = FunctionTransformer(sparse_relu, accept_sparse=True).fit_transform(self._X)
         else:
-            x_abs = self._X_norm
+            x_abs = self._X
             np.maximum(x_abs, 0, x_abs)
 
         chi2_score, pval = chi2(x_abs, self._Y)
         return chi2_score
 
-    def __init__(self, X, Y, sparse=False, random_state=42):
+    def __init__(self, X, Y, sparse=False, normalize=True, random_state=42):
         self.X = X
         self.Y = Y
+        self.normalize = normalize
         # these are used for "current" dataset to run
         self._X = X
-        self._X_norm = None
+        self._X_norm = X
         self._Y = Y
         self._sparse = sparse
         self._random_state = random_state
@@ -492,7 +501,8 @@ class DatasetStats(object):
         return self
 
     def run_data(self, data):
-        self._X_norm = Normalizer().fit_transform(self._X)
+        if self.normalize:
+            self._X_norm = Normalizer().fit_transform(self._X)
 
         for m in self._table_metrics:
             start = time.time()
@@ -545,3 +555,41 @@ class DatasetStats(object):
             return self.results_df
         else:
             raise ValueError('Must select metrics using include_all(), include(), or exclude()')
+
+
+def sample_data(x, y, pos_size, neg_size, seed):
+    np.random.seed(seed)
+    pos_samp_idx = np.random.choice(np.argwhere(y == 1).ravel(), pos_size, replace=False)
+    np.random.seed(seed)
+    neg_samp_idx = np.random.choice(np.argwhere(y == 0).ravel(), neg_size, replace=False)
+
+    samp_idx = np.concatenate([pos_samp_idx, neg_samp_idx])
+    x_samp = x[samp_idx, :]
+    y_samp = y[samp_idx]
+
+    return x_samp, y_samp
+
+
+def threshold_metrics(actual, predicted, rank_best=None, threshold=None):
+    if rank_best and threshold:
+        raise ValueError('Cannot set both rank_best and threshold')
+    fpr, tpr, thresholds = roc_curve(actual, predicted)
+    roc_auc = roc_auc_score(actual, predicted)
+
+    p = sum(np.array(actual) == 1)
+    n = sum(np.array(actual) == 0)
+    perf_df = pd.DataFrame({'lab_threshold': thresholds,
+                            'lab_tpr': tpr,
+                            'lab_tnr': 1 - fpr,
+                            'lab_b_acc': (tpr + (1 - fpr)) / 2.0,
+                            'lab_gmean': np.sqrt(tpr * (1 - fpr)),
+                            'lab_auc': [roc_auc] * len(fpr),
+                            'lab_acc': ((tpr * p) + ((1 - fpr) * n)) / (p + n)
+                            })
+
+    # get best threshold
+    if rank_best:
+        best_thresh = perf_df.sort_values(rank_best, ascending=False)
+    else:
+        best_thresh = perf_df.iloc[(perf_df['lab_threshold'] - threshold).abs().argsort()[:1]]
+    return best_thresh.iloc[0].to_dict()
