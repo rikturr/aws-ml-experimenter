@@ -558,10 +558,18 @@ class DatasetStats(object):
 
 
 def sample_data(x, y, pos_size, neg_size, seed):
+    pos_idx = np.argwhere(y == 1).ravel()
+    neg_idx = np.argwhere(y == 0).ravel()
+
     np.random.seed(seed)
-    pos_samp_idx = np.random.choice(np.argwhere(y == 1).ravel(), pos_size, replace=False)
-    np.random.seed(seed)
-    neg_samp_idx = np.random.choice(np.argwhere(y == 0).ravel(), neg_size, replace=False)
+    pos_samp_idx = np.random.choice(pos_idx, pos_size, replace=False)
+
+    if neg_size > neg_idx.shape[0]:
+        np.random.seed(seed)
+        neg_samp_idx = np.hstack((neg_idx, np.random.choice(neg_idx, neg_size - neg_idx.shape[0], replace=False)))
+    else:
+        np.random.seed(seed)
+        neg_samp_idx = np.random.choice(neg_idx, neg_size, replace=False)
 
     samp_idx = np.concatenate([pos_samp_idx, neg_samp_idx])
     x_samp = x[samp_idx, :]

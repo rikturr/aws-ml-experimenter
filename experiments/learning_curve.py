@@ -61,7 +61,7 @@ def model_eval(pipeline, local, x, y, pos_ratio, results_path, bucket, rus, rand
     if np.sum(y) < pos_size:
         error = True
         error_message += f' Not enough positive samples: {np.sum(y)}'
-    if np.count_nonzero(y == 0) < neg_size:
+    if np.count_nonzero(y == 0) * 2 < neg_size:
         error = True
         error_message += f' Not enough negative samples: {np.count_nonzero(y == 0)}'
 
@@ -149,8 +149,8 @@ def main():
     if rus:
         pipeline = [RatioRandomUnderSampler(rus, random_state=random_state)] + pipeline
 
-    y_pseudo = []
-    pseudo_results = []
+    y_pseudo = {}
+    pseudo_results = {}
     if pseudo_size:
         logger.warning(f'Pseudo size: {pseudo_size}')
         total = int(pseudo_size / pos_ratio)
@@ -159,10 +159,10 @@ def main():
         for r in runs:
             x_lab, y_lab = sample_data(X, Y, pseudo_size, neg_size, random_state + r)
             pseudo_lab, results = pseudo_label(pipeline, x_lab, y_lab, X, Y, threshold=threshold)
-            y_pseudo.append(pseudo_lab)
+            y_pseudo[r] = pseudo_lab
 
             results['pseudo_size'] = pseudo_size
-            pseudo_results.append(results)
+            pseudo_results[r] = results
 
     run_args = [(pipeline,
                  local,
