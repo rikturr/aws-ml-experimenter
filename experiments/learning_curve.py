@@ -53,23 +53,32 @@ def pseudo_label(pipeline, x_lab, y_lab, x_unlab, y_unlab, threshold=None):
 def model_eval(pipeline, local, x, y, pos_ratio, results_path, bucket, rus, random_state, pos_size, run, extra=None):
     start = datetime.now()
 
-    total = int(pos_size / pos_ratio)
-    neg_size = total - pos_size
-
     error = False
     error_message = ''
-    if np.sum(y) < pos_size:
-        error = True
-        error_message += f' Not enough positive samples: {np.sum(y)}'
-    if np.count_nonzero(y == 0) * 2 < neg_size:
-        error = True
-        error_message += f' Not enough negative samples: {np.count_nonzero(y == 0)}'
+    if pos_size:
+        total = int(pos_size / pos_ratio)
+        neg_size = total - pos_size
+
+        if np.sum(y) < pos_size:
+            error = True
+            error_message += f' Not enough positive samples: {np.sum(y)}'
+        if np.count_nonzero(y == 0) * 2 < neg_size:
+            error = True
+            error_message += f' Not enough negative samples: {np.count_nonzero(y == 0)}'
+    else:
+        total = y.shape[0]
+        neg_size = total - np.sum(y)
+    logger.warning(f"Starting RUN={run} Size={pos_size} RUS={rus}")
 
     if error:
         o = {'error': [error_message]}
         logger.warning(f"RUN={run} Size={pos_size} RUS={rus} {error_message}")
     else:
-        x_train, y_train = sample_data(x, y, pos_size, neg_size, random_state + run)
+        if pos_size:
+            x_train, y_train = sample_data(x, y, pos_size, neg_size, random_state + run)
+        else:
+            x_train = x
+            y_train = y
 
         model = make_pipeline(*pipeline)
         o = cross_validate(model, x_train, y_train, cv=5, scoring=['roc_auc'])
@@ -85,12 +94,13 @@ def model_eval(pipeline, local, x, y, pos_ratio, results_path, bucket, rus, rand
         for k, v in extra.items():
             o[k] = v
 
-    filename = f'{results_path}/pos_size={pos_size}_rus={rus}.csv'
-    if file_exists(filename, bucket=bucket, local=local):
-        current_results = pd.read_csv(filename if local else get_s3(filename, bucket=bucket))
-        new_results = pd.concat([current_results, pd.DataFrame(o)])
-    else:
-        new_results = pd.DataFrame(o)
+    filename = f'{results_path}/pos_size={pos_size}_rus={rus}_run={run}.csv'
+    # if file_exists(filename, bucket=bucket, local=local):
+    #     current_results = pd.read_csv(filename if local else get_s3(filename, bucket=bucket))
+    #     new_results = pd.concat([current_results, pd.DataFrame(o)])
+    # else:
+    #     new_results = pd.DataFrame(o)
+    new_results = pd.DataFrame(o)
 
     if local:
         new_results.to_csv(filename, index=False)
@@ -112,7 +122,6 @@ def main():
     experiment_id = args.experiment_id or uuid.uuid4()
     sparse = hasattr(config, 'sparse') and config.sparse
     random_state = config.random_state
-    nthreads = config.nthreads
 
     config_num = args.config_num
     exp_config = config.configs[config_num]
@@ -123,6 +132,7 @@ def main():
     pseudo_size = exp_config['pseudo_size'] if 'pseudo_size' in exp_config else None
     runs = exp_config['runs']
     threshold = exp_config['threshold'] if 'threshold' in exp_config else None
+    nthreads = exp_config['nthreads'] if 'nthreads' in exp_config else config.nthreads
 
     logger.warning(f'Creative curve for: {name}')
 
@@ -176,8 +186,9 @@ def main():
                  s,
                  r,
                  pseudo_results[r] if pseudo_results else None) for s in sizes for r in runs]
-    random.seed(random_state)
-    random.shuffle(run_args)
+    if nthreads > 1:
+        random.seed(random_state)
+        # random.shuffle(run_args)
 
     with ThreadPool(nthreads) as pool:
         pool.starmap(model_eval, run_args)

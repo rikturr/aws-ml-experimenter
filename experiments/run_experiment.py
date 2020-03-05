@@ -11,6 +11,9 @@ import sys
 import copy
 import importlib
 
+# AMI = 'ami-3a533040'
+AMI = 'ami-06c2c729346a4ffc0'
+
 logger = logging.getLogger('root')
 logFormatter = logging.Formatter('%(asctime)s %(process)d [%(funcName)s] %(levelname)s: %(message)s')
 console_handler = logging.StreamHandler()
@@ -19,6 +22,7 @@ console_handler.setLevel(logging.INFO)
 logger.addHandler(console_handler)
 
 REQUIREMENTS = ['boto3', 'pandas', 'numpy', 'scikit-learn==0.19.0', 'scipy==1.0.0', 'feather-format', 'xgboost']
+JUPYTER_REQUIREMENTS = ['jupyter_contrib_nbextensions', 'jupyter_nbextensions_configurator']
 PIP_REQUIREMENTS = ['tpot', 'imbalanced-learn==0.3.3', 'tables==3.4.4']
 
 s3 = boto3.resource('s3')
@@ -96,12 +100,12 @@ if __name__ == "__main__":
                 {
                     'Key': 'app',
                     'Value': 'machine_learning'
-                }
+                },
             ]
         }]
     if bid_price:
         create = ec2.run_instances(
-            ImageId='ami-3a533040',
+            ImageId=AMI,
             InstanceType=instance_type,
             MaxCount=num_configs,
             MinCount=num_configs,
@@ -130,7 +134,7 @@ if __name__ == "__main__":
         )
     else:
         create = ec2.run_instances(
-            ImageId='ami-5c9aa926',
+            ImageId=AMI,
             InstanceType=instance_type,
             MaxCount=num_configs,
             MinCount=num_configs,
@@ -158,7 +162,7 @@ if __name__ == "__main__":
         terminate_waiter.wait(InstanceIds=instance_ids)
         raise ValueError('Did not get the correct number of instances, got {}, requested {}'.format(len(instance_ids), num_configs))
     logger.warning('Got {} instances'.format(len(instance_ids)))
-    logger.warning('Instance IDs: {}'.format(' ' .join(instance_ids)))
+    logger.warning('Instance IDs: {}'.format(' '.join(instance_ids)))
 
     waiter = ec2.get_waiter('instance_status_ok')
     waiter.wait(InstanceIds=instance_ids)
@@ -188,6 +192,9 @@ if __name__ == "__main__":
 
     for i, instance_id, public_dns in public_dns_names:
         commands = """
+        # conda install {jupyter_dep} -c conda-forge
+        # jupyter nbextension enable execute_time/ExecuteTime
+        
         source activate tensorflow_p36
     
         instanceid={instance_id}
@@ -208,6 +215,7 @@ if __name__ == "__main__":
         """.format(instance_id=instance_id,
                    dep=' '.join(REQUIREMENTS),
                    pip_dep=' '.join(PIP_REQUIREMENTS),
+                   jupyter_dep=' '.join(JUPYTER_REQUIREMENTS),
                    script=os.path.basename(script),
                    config=os.path.basename(config_path).split('.')[0],
                    config_num=i,

@@ -12,11 +12,7 @@ library(kableExtra)
 library(ggplot2)
 library(plotly)
 library(tibble)
-library(agricolae)
-
-passwords <- str_split(Sys.getenv('PASSWORDS'), ',')[[1]]
-bucket <- Sys.getenv('S3_BUCKET')
-experiment <- Sys.getenv('EXPERIMENT')
+source('agricolae.R')
 
 ##########################################
 ##########################################
@@ -24,6 +20,10 @@ experiment <- Sys.getenv('EXPERIMENT')
 # dev <- T
 ##########################################
 ##########################################
+
+passwords <- str_split(Sys.getenv('PASSWORDS'), ',')[[1]]
+bucket <- Sys.getenv('S3_BUCKET')
+experiment <- Sys.getenv('EXPERIMENT')
 
 results <- get_object(bucket = bucket, object = glue("experiments/cv_results_combined/{experiment}.csv")) %>% 
   read_csv %>% 
@@ -68,8 +68,8 @@ results_kable <- function(df, row_name, col_name, metric_name, digits = 2) {
     left_join(abs_max, by = c(row_name, col_name)) %>%
     rowwise() %>%
     mutate(metric = cell_spec(signif(metric, digits), 'html',
-                        bold = ifelse(metric == max_metric, T, F),
-                        color = ifelse(!is.na(abs_max), 'blue', 'black'))) %>%
+                              bold = ifelse(metric == max_metric, T, F),
+                              color = ifelse(!is.na(abs_max), 'blue', 'black'))) %>%
     select(-max_metric, -abs_max) %>%
     spread_(col_name, 'metric')
 }
@@ -104,6 +104,7 @@ hsd_df <- function(aov, which, y) {
   }
   hsd
 }
+
 
 ui <- fluidPage(
   shinyjs::useShinyjs(),
